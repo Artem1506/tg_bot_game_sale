@@ -3,6 +3,7 @@ import asyncio
 import re
 import urllib.parse
 import sys
+import html as html_mod
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,8 @@ class FabClient:
                           {
                               "title": "Название ассета",
                               "url": "Ссылка на ассет",
-                              "author": "Имя автора"
+                              "author": "Имя автора",
+                              "description": "Описание ассета"
                           },
                           ...
                       ]
@@ -37,7 +39,6 @@ class FabClient:
             logger.info("Запуск curl для загрузки страницы раздач Fab.com...")
             
             # Запускаем curl асинхронно
-            # Ключ -s отключает индикатор прогресса, -A задает User-Agent
             process = await asyncio.create_subprocess_exec(
                 "curl", "-s", "-A", self.user_agent, self.url,
                 stdout=asyncio.subprocess.PIPE,
@@ -50,15 +51,73 @@ class FabClient:
                 logger.error("curl завершился с ошибкой (код %d): %s", process.returncode, stderr.decode("utf-8", errors="ignore"))
                 return {}
                 
-            # Декодируем вывод. Страница обычно в UTF-8.
             html = stdout.decode("utf-8", errors="ignore")
-            logger.info("Страница Fab.com успешно загружена. Размер: %d символов. Начинаю парсинг...", len(html))
+            logger.info("Страница Fab.com успешно загружена. Размер: %d символов.", len(html))
             
-            return self._parse_html(html)
+            data = self._parse_html(html)
+            assets = data.get("assets", [])
+            
+            if not assets:
+                return {}
+                
+            # Асинхронно загружаем описание для каждого ассета
+            logger.info("Запуск параллельного сбора описаний для %d ассетов...", len(assets))
+            tasks = []
+            for asset in assets:
+                asset_id = asset["url"].split("/")[-1]
+                tasks.append(self._get_asset_description(asset_id))
+                
+            descriptions = await asyncio.gather(*tasks)
+            
+            for asset, desc in zip(assets, descriptions):
+                asset["description"] = desc
+                
+            logger.info("Сбор описаний завершен.")
+            return {"assets": assets}
             
         except Exception as e:
-            logger.exception("Критическая ошибка при вызове curl для Fab.com: %s", str(e))
+            logger.exception("Критическая ошибка при получении данных с Fab.com: %s", str(e))
             return {}
+
+    async def _get_asset_description(self, asset_id: str) -> str:
+        """Загружает страницу ассета и извлекает описание из мета-тегов."""
+        url = f"https://www.fab.com/listings/{asset_id}"
+        try:
+            logger.info("Загрузка страницы ассета %s...", asset_id)
+            process = await asyncio.create_subprocess_exec(
+                "curl", "-s", "-A", self.user_agent, url,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await process.communicate()
+            
+            if process.returncode != 0:
+                logger.error("curl завершился с ошибкой при запросе ассета %s", asset_id)
+                return ""
+                
+            html_content = stdout.decode("utf-8", errors="ignore")
+            
+            # Ищем meta description или og:description
+            match = re.search(r'<meta name="description" content="([^"]+)"', html_content)
+            if not match:
+                match = re.search(r'<meta property="og:description" content="([^"]+)"', html_content)
+                
+            if match:
+                desc = match.group(1).strip()
+                # Декодируем спецсимволы HTML (&quot;, &#34; и т.д.) с учетом возможного двойного экранирования
+                desc_clean = html_mod.unescape(html_mod.unescape(desc))
+                # Убираем лишние переносы строк и пробелы
+                desc_clean = re.sub(r'\s+', ' ', desc_clean)
+                
+                # Обрезаем описание до 200 символов
+                if len(desc_clean) > 200:
+                    return desc_clean[:197] + "..."
+                return desc_clean
+                
+            return ""
+        except Exception as e:
+            logger.error("Ошибка при извлечении описания ассета %s: %s", asset_id, str(e))
+            return ""
 
     def _parse_html(self, html: str) -> dict:
         """Парсит HTML-код страницы раздач Fab.com с помощью регулярных выражений.
@@ -67,11 +126,8 @@ class FabClient:
             html (str): HTML-код страницы.
             
         Returns:
-            dict: Структурированные данные о раздаваемых ассетах.
+            dict: Структурированные данные о раздаваемых ассетах (без описаний).
         """
-        # Шаблон для поиска:
-        # 1. Ссылка на listing и название ассета
-        # 2. Опционально идущая следом ссылка на seller и имя автора
         pattern = re.compile(
             r'href="/listings/([a-f0-9-]+)"[^>]*>.*?<div[^>]*class="fabkit-Typography-ellipsisWrapper"[^>]*>([^<]+)</div>.*?</a>'
             r'(?:.*?href="/sellers/([^"]+)"[^>]*>.*?<div[^>]*class="fabkit-Typography-ellipsisWrapper"[^>]*>([^<]+)</div>.*?</a>)?',
@@ -79,7 +135,6 @@ class FabClient:
         )
         
         matches = pattern.findall(html)
-        logger.info("Всего совпадений по регулярному выражению: %d", len(matches))
         
         assets = []
         seen_ids = set()
@@ -96,5 +151,4 @@ class FabClient:
                     "author": seller_name
                 })
                 
-        logger.info("Успешно извлечено уникальных ассетов: %d", len(assets))
         return {"assets": assets}
