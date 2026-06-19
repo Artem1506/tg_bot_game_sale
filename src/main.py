@@ -13,9 +13,10 @@ from aiogram import Bot, Dispatcher
 from src.config import settings
 from src.bot.handlers import router as bot_router
 from src.bot.scheduler import setup_scheduler
+from src.bot.middlewares import RequestLoggingMiddleware
 
 def setup_logging():
-    """Настраивает логирование в файл с ротацией и вывод в консоль."""
+    """Настраивает логирование в файлы и вывод в консоль."""
     # Создаем директорию для логов, если её нет
     settings.log_dir.mkdir(parents=True, exist_ok=True)
     
@@ -31,6 +32,14 @@ def setup_logging():
     )
     file_handler.setFormatter(logging.Formatter(fmt=log_format, datefmt=date_format))
     
+    # Настройка FileHandler для текстового файла в корне проекта
+    root_log_file = ROOT_DIR / "bot_activity.log"
+    root_file_handler = logging.FileHandler(
+        filename=root_log_file,
+        encoding="utf-8"
+    )
+    root_file_handler.setFormatter(logging.Formatter(fmt=log_format, datefmt=date_format))
+    
     # Настройка консольного вывода
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(logging.Formatter(fmt=log_format, datefmt=date_format))
@@ -38,7 +47,7 @@ def setup_logging():
     # Базовая конфигурация корневого логгера
     logging.basicConfig(
         level=logging.INFO,
-        handlers=[file_handler, console_handler]
+        handlers=[file_handler, root_file_handler, console_handler]
     )
     
     # Понижаем уровень шума для сторонних библиотек
@@ -59,6 +68,9 @@ async def main():
     # Инициализируем бота и диспетчер
     bot = Bot(token=settings.bot_token)
     dp = Dispatcher()
+
+    # Подключаем middleware для логирования запросов
+    dp.message.outer_middleware(RequestLoggingMiddleware())
 
     # Подключаем обработчики команд
     dp.include_router(bot_router)

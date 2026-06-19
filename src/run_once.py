@@ -16,7 +16,7 @@ from src.bot.history import HistoryManager
 from src.bot.publisher import publish_games
 
 def setup_logging():
-    """Настраивает логирование в файл и консоль."""
+    """Настраивает логирование в файлы и консоль."""
     settings.log_dir.mkdir(parents=True, exist_ok=True)
     log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     date_format = "%Y-%m-%d %H:%M:%S"
@@ -29,12 +29,20 @@ def setup_logging():
     )
     file_handler.setFormatter(logging.Formatter(fmt=log_format, datefmt=date_format))
     
+    # Настройка FileHandler для текстового файла в корне проекта
+    root_log_file = ROOT_DIR / "bot_activity.log"
+    root_file_handler = logging.FileHandler(
+        filename=root_log_file,
+        encoding="utf-8"
+    )
+    root_file_handler.setFormatter(logging.Formatter(fmt=log_format, datefmt=date_format))
+    
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(logging.Formatter(fmt=log_format, datefmt=date_format))
     
     logging.basicConfig(
         level=logging.INFO,
-        handlers=[file_handler, console_handler]
+        handlers=[file_handler, root_file_handler, console_handler]
     )
     
     # Отключаем лишний шум
