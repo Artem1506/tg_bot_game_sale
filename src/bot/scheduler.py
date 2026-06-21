@@ -37,15 +37,38 @@ async def check_and_publish_daily(bot: Bot):
             new_games.append(game)
             
         if new_games:
-            logger.info("Найдено новых раздач: %d. Публикация в канал...", len(new_games))
-            success = await publish_games(bot, settings.channel_id, new_games)
-            if success:
+            logger.info("Найдено новых раздач: %d. Публикация...", len(new_games))
+            
+            # Собираем все каналы и группы для публикации
+            from src.bot.channels import ChannelsManager
+            channels_manager = ChannelsManager()
+            
+            target_chats = set()
+            if settings.channel_id:
+                target_chats.add(settings.channel_id)
+                
+            for ch_id in channels_manager.get_channels().keys():
+                try:
+                    target_chats.add(int(ch_id))
+                except ValueError:
+                    target_chats.add(ch_id)
+            
+            published_count = 0
+            for chat_id in target_chats:
+                try:
+                    success = await publish_games(bot, chat_id, new_games)
+                    if success:
+                        published_count += 1
+                except Exception as e:
+                    logger.error("Ошибка при авто-публикации в чат %s: %s", chat_id, str(e))
+                    
+            if published_count > 0:
                 # Фиксируем все опубликованные игры в истории
                 for game in new_games:
                     history.mark_as_published(game["id"], game["title"])
-                logger.info("Автоматическая проверка завершена. Опубликовано новых игр: %d", len(new_games))
+                logger.info("Автоматическая проверка завершена. Опубликовано новых игр: %d в %d чатов", len(new_games), published_count)
             else:
-                logger.error("Не удалось опубликовать новые раздачи.")
+                logger.error("Не удалось опубликовать новые раздачи ни в один чат.")
         else:
             logger.info("Новых раздач для публикации не найдено.")
         

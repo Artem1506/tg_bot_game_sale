@@ -3,7 +3,10 @@ from typing import Callable, Dict, Any, Awaitable
 from aiogram import BaseMiddleware
 from aiogram.types import Message
 
+from src.bot.channels import ChannelsManager
+
 logger = logging.getLogger("bot.requests")
+channels_manager = ChannelsManager()
 
 class RequestLoggingMiddleware(BaseMiddleware):
     """Middleware для логирования входящих сообщений (запросов) к боту."""
@@ -32,6 +35,10 @@ class RequestLoggingMiddleware(BaseMiddleware):
                 chat_info += f" ({event.chat.title})"
             elif event.chat.type == "private":
                 chat_info += " (private)"
+
+            # Автоматически регистрируем чат (канал или группу), если пришло сообщение
+            if event.chat.type in ("group", "supergroup", "channel"):
+                channels_manager.add_channel(event.chat.id, event.chat.title or "Без названия", event.chat.type)
 
             logger.info(
                 "Получен запрос от пользователя [%s] в чате [%s]: %s",

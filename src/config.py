@@ -53,6 +53,9 @@ class Settings:
         # Путь к файлу с историей раздач
         self.history_file: Path = ROOT_DIR / "history.json"
         
+        # Путь к файлу со списком известных каналов бота
+        self.channels_file: Path = ROOT_DIR / "channels.json"
+        
         # Путь к лог-файлам
         self.log_dir: Path = ROOT_DIR / "logs"
         self.log_file: Path = self.log_dir / "app.log"

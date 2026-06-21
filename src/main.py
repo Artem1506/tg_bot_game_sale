@@ -83,7 +83,7 @@ async def main():
         logger.info("Бот запущен и готов к приему сообщений. Запуск polling...")
         # Сбрасываем накопившиеся за время офлайна апдейты перед запуском
         await bot.delete_webhook(drop_pending_updates=True)
-        await dp.start_polling(bot)
+        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     except Exception as e:
         logger.exception("Критическая ошибка при работе бота: %s", str(e))
     finally:
