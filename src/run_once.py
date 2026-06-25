@@ -64,33 +64,39 @@ async def run_once():
     history = HistoryManager()
 
     try:
-        # 1. Получаем список активных раздач
-        games = await epic_client.get_free_games()
-        if not games:
-            logger.info("Активных раздач не обнаружено.")
-            return
-
-        # 2. Фильтруем только новые (которых нет в истории)
-        new_games = []
-        for game in games:
-            if not history.is_published(game["id"]):
-                new_games.append(game)
+        # 1. Проверяем раздачи EGS
+        try:
+            games = await epic_client.get_free_games()
+            if not games:
+                logger.info("Активных раздач EGS не обнаружено.")
             else:
-                logger.info("Игра '%s' уже была опубликована. Пропуск.", game["title"])
-
-        # 3. Публикуем новые игры
-        if new_games:
-            logger.info("Найдено новых игр для публикации: %d", len(new_games))
-            success = await publish_games(bot, settings.channel_id, new_games)
-            if success:
-                # Фиксируем в JSON истории
-                for game in new_games:
-                    history.mark_as_published(game["id"], game["title"])
-                logger.info("Все новые игры успешно опубликованы в канал.")
-            else:
-                logger.error("Ошибка при публикации новых игр в канал.")
-        else:
-            logger.info("Все найденные игры уже есть в истории. Публикация не требуется.")
+                new_games = []
+                for game in games:
+                    if not history.is_published(game["id"]):
+                        new_games.append(game)
+                    else:
+                        logger.info("Игра '%s' уже была опубликована. Пропуск.", game["title"])
+                
+                if new_games:
+                    logger.info("Найдено новых игр для публикации: %d", len(new_games))
+                    success = await publish_games(bot, settings.channel_id, new_games)
+                    if success:
+                        for game in new_games:
+                            history.mark_as_published(game["id"], game["title"])
+                        logger.info("Все новые игры успешно опубликованы в канал.")
+                    else:
+                        logger.error("Ошибка при публикации новых игр в канал.")
+                else:
+                    logger.info("Все найденные игры уже есть в истории. Публикация не требуется.")
+        except Exception as e:
+            logger.exception("Ошибка при проверке раздач EGS: %s", str(e))
+            
+        # 2. Проверяем раздачи Fab
+        try:
+            from src.bot.scheduler import check_and_publish_fab
+            await check_and_publish_fab(bot)
+        except Exception as e:
+            logger.exception("Ошибка при проверке раздач Fab: %s", str(e))
 
     except Exception as e:
         logger.exception("Критическая ошибка при разовом запуске: %s", str(e))

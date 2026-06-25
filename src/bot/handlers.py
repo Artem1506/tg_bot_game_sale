@@ -175,13 +175,13 @@ async def cmd_check_fab(message: Message, bot: Bot):
             if desc:
                 desc_esc = escape_markdown(desc)
                 item_text = (
-                    f"🔥 *{idx}\. [{asset_title}]({asset_url})*\n"
+                    f"🔥 *{idx}\\. [{asset_title}]({asset_url})*\n"
                     f"👤 Автор: *{author}*\n"
                     f"📖 _Описание: {desc_esc}_"
                 )
             else:
                 item_text = (
-                    f"🔥 *{idx}\. [{asset_title}]({asset_url})*\n"
+                    f"🔥 *{idx}\\. [{asset_title}]({asset_url})*\n"
                     f"👤 Автор: *{author}*"
                 )
             body_parts.append(item_text)
@@ -189,8 +189,8 @@ async def cmd_check_fab(message: Message, bot: Bot):
         body = "\n\n".join(body_parts)
         
         footer = (
-            f"\n\n👉 Заберите их на странице [Fab Limited\-Time Free](https://www.fab.com/limited-time-free) "
-            f"или в Unreal Engine Editor в разделе Fab\!"
+            f"\n\n👉 Заберите их на странице [Fab Limited\\-Time Free](https://www.fab.com/limited-time-free) "
+            f"или в Unreal Engine Editor в разделе Fab\\!"
         )
         
         text = f"{header}{body}{footer}"

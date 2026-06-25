@@ -146,6 +146,7 @@ class FabClient:
                 seller_name = seller_name.strip() if seller_name else "Неизвестно"
                 
                 assets.append({
+                    "id": item_id,
                     "title": title,
                     "url": f"https://www.fab.com/listings/{item_id}",
                     "author": seller_name

@@ -29,7 +29,7 @@ class EpicGamesClient:
         """
         params = {
             "locale": "ru",
-            "country": "RU"
+            "country": "US"
         }
         
         max_retries = 3

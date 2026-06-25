@@ -12,8 +12,110 @@ logger = logging.getLogger(__name__)
 scheduler = AsyncIOScheduler()
 epic_client = EpicGamesClient()
 
+async def check_and_publish_fab(bot: Bot):
+    """Проверяет раздачи Fab.com и публикует новые ассеты."""
+    logger.info("Запуск автоматической проверки раздач Fab.com...")
+    
+    from src.api.fab_client import FabClient
+    from src.bot.channels import ChannelsManager
+    from src.bot.publisher import escape_markdown
+    
+    fab_client = FabClient()
+    history = HistoryManager()
+    channels_manager = ChannelsManager()
+    
+    try:
+        data = await fab_client.get_fab_freebies()
+        if not data or not data.get("assets"):
+            logger.info("Активных раздач на Fab.com не найдено.")
+            return
+            
+        new_assets = []
+        for asset in data["assets"]:
+            asset_id = asset.get("id")
+            if not asset_id:
+                asset_id = asset["url"].split("/")[-1]
+                asset["id"] = asset_id
+                
+            if not history.is_published(asset_id):
+                new_assets.append(asset)
+            else:
+                logger.info("Ассет '%s' (ID: %s) уже публиковался ранее. Пропуск.", asset["title"], asset_id)
+                
+        if not new_assets:
+            logger.info("Новых раздач на Fab.com для публикации не найдено.")
+            return
+            
+        logger.info("Найдено новых ассетов Fab: %d. Формирование публикации...", len(new_assets))
+        
+        header = (
+            f"📦 *НОВЫЕ БЕСПЛАТНЫЕ МАТЕРИАЛЫ FAB* 📦\n\n"
+            f"🔥 *Список новых бесплатных материалов на Fab\\.com:*\n\n"
+        )
+        
+        body_parts = []
+        for idx, asset in enumerate(new_assets, start=1):
+            asset_title = escape_markdown(asset["title"])
+            asset_url = asset["url"].replace("(", "\\(").replace(")", "\\)")
+            author = escape_markdown(asset.get("author", "Неизвестно"))
+            
+            desc = asset.get("description", "").strip()
+            if desc:
+                desc_esc = escape_markdown(desc)
+                item_text = (
+                    f"🔥 *{idx}\\. [{asset_title}]({asset_url})*\n"
+                    f"👤 Автор: *{author}*\n"
+                    f"📖 _Описание: {desc_esc}_"
+                )
+            else:
+                item_text = (
+                    f"🔥 *{idx}\\. [{asset_title}]({asset_url})*\n"
+                    f"👤 Автор: *{author}*"
+                )
+            body_parts.append(item_text)
+            
+        body = "\n\n".join(body_parts)
+        footer = (
+            f"\n\n👉 Заберите их на странице [Fab Limited\\-Time Free](https://www.fab.com/limited-time-free) "
+            f"или в Unreal Engine Editor в разделе Fab\\!"
+        )
+        text = f"{header}{body}{footer}"
+        
+        target_chats = set()
+        if settings.channel_id:
+            target_chats.add(settings.channel_id)
+            
+        for ch_id in channels_manager.get_channels().keys():
+            try:
+                target_chats.add(int(ch_id))
+            except ValueError:
+                target_chats.add(ch_id)
+                
+        published_count = 0
+        for chat_id in target_chats:
+            try:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=text,
+                    parse_mode="MarkdownV2",
+                    disable_web_page_preview=True
+                )
+                published_count += 1
+            except Exception as e:
+                logger.error("Ошибка при публикации Fab в чат %s: %s", chat_id, str(e))
+                
+        if published_count > 0:
+            for asset in new_assets:
+                history.mark_as_published(asset["id"], asset["title"])
+            logger.info("Автоматическая проверка Fab завершена. Опубликовано новых ассетов: %d в %d чатов", len(new_assets), published_count)
+        else:
+            logger.error("Не удалось опубликовать ассеты Fab ни в один чат.")
+            
+    except Exception as e:
+        logger.exception("Ошибка в фоновой проверке Fab: %s", str(e))
+
 async def check_and_publish_daily(bot: Bot):
-    """Задача планировщика: проверяет EGS API и публикует новые раздачи."""
+    """Задача планировщика: проверяет EGS API и Fab.com и публикует новые раздачи."""
     logger.info("Запуск автоматической проверки раздач...")
     
     try:
@@ -74,6 +176,11 @@ async def check_and_publish_daily(bot: Bot):
         
     except Exception as e:
         logger.exception("Ошибка в фоновой задаче планировщика check_and_publish_daily: %s", str(e))
+        
+    try:
+        await check_and_publish_fab(bot)
+    except Exception as e:
+        logger.exception("Ошибка при авто-проверке раздач Fab: %s", str(e))
 
 def setup_scheduler(bot: Bot):
     """Настраивает и запускает планировщик задач."""
