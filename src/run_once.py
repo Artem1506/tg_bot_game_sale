@@ -79,13 +79,21 @@ async def run_once():
                 
                 if new_games:
                     logger.info("Найдено новых игр для публикации: %d", len(new_games))
-                    success = await publish_games(bot, settings.channel_id, new_games)
-                    if success:
+                    published_count = 0
+                    for chat_id in settings.channel_ids:
+                        try:
+                            success = await publish_games(bot, chat_id, new_games)
+                            if success:
+                                published_count += 1
+                        except Exception as e:
+                            logger.error("Ошибка при авто-публикации игры в чат %s: %s", chat_id, str(e))
+                            
+                    if published_count > 0:
                         for game in new_games:
                             history.mark_as_published(game["id"], game["title"])
-                        logger.info("Все новые игры успешно опубликованы в канал.")
+                        logger.info("Все новые игры успешно опубликованы в %d чатов.", published_count)
                     else:
-                        logger.error("Ошибка при публикации новых игр в канал.")
+                        logger.error("Ошибка при публикации новых игр во все чаты.")
                 else:
                     logger.info("Все найденные игры уже есть в истории. Публикация не требуется.")
         except Exception as e:

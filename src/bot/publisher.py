@@ -186,3 +186,68 @@ async def publish_games(bot: Bot, chat_id: int | str, games: list[dict]) -> bool
     except Exception as e:
         logger.exception("Непредвиденная ошибка при публикации раздачи: %s", str(e))
         return False
+
+def build_fab_post_text(assets: list[dict], is_new: bool = True) -> str:
+    """Формирует текст публикации для ассетов Fab.com."""
+    if is_new:
+        header = (
+            f"📦 *НОВЫЕ БЕСПЛАТНЫЕ МАТЕРИАЛЫ FAB* 📦\n\n"
+            f"🔥 *Список новых бесплатных материалов на Fab\\.com:*\n\n"
+        )
+    else:
+        header = (
+            f"📦 *БЕСПЛАТНЫЙ КОНТЕНТ FAB* 📦\n\n"
+            f"🔥 *Список бесплатных материалов на этот период:*\n\n"
+        )
+    
+    body_parts = []
+    for idx, asset in enumerate(assets, start=1):
+        asset_title = escape_markdown(asset["title"])
+        asset_url = asset["url"].replace("(", "\\(").replace(")", "\\)")
+        author = escape_markdown(asset.get("author", "Неизвестно"))
+        
+        desc = asset.get("description", "").strip()
+        if desc:
+            desc_esc = escape_markdown(desc)
+            item_text = (
+                f"🔥 *{idx}\\. [{asset_title}]({asset_url})*\n"
+                f"👤 Автор: *{author}*\n"
+                f"📖 _Описание: {desc_esc}_"
+            )
+        else:
+            item_text = (
+                f"🔥 *{idx}\\. [{asset_title}]({asset_url})*\n"
+                f"👤 Автор: *{author}*"
+            )
+        body_parts.append(item_text)
+        
+    body = "\n\n".join(body_parts)
+    
+    footer = (
+        f"\n\n👉 Заберите их на странице [Fab Limited\\-Time Free](https://www.fab.com/limited-time-free) "
+        f"или в Unreal Engine Editor в разделе Fab\\!"
+    )
+    
+    return f"{header}{body}{footer}"
+
+async def publish_fab_assets(bot: Bot, chat_id: int | str, assets: list[dict], is_new: bool = True) -> bool:
+    """Публикует список ассетов FAB в указанный чат."""
+    if not assets:
+        return False
+        
+    text = build_fab_post_text(assets, is_new=is_new)
+    
+    try:
+        await bot.send_message(
+            chat_id=chat_id,
+            text=text,
+            parse_mode="MarkdownV2",
+            disable_web_page_preview=True
+        )
+        return True
+    except TelegramAPIError as e:
+        logger.error("Ошибка Telegram API при отправке поста FAB в чат %s: %s", chat_id, str(e))
+        return False
+    except Exception as e:
+        logger.exception("Непредвиденная ошибка при публикации FAB: %s", str(e))
+        return False

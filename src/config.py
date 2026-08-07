@@ -24,13 +24,22 @@ class Settings:
     def _init_settings(self):
         self.bot_token: str = os.getenv("BOT_TOKEN", "")
         
-        # ID канала может быть строкой или числом (например, -100xxx)
-        channel_id_str = os.getenv("CHANNEL_ID", "")
-        try:
-            self.channel_id: int = int(channel_id_str)
-        except ValueError:
-            # Если это строка (например, юзернейм канала с @)
-            self.channel_id: str = channel_id_str if channel_id_str.startswith("@") else f"@{channel_id_str}"
+        # ID каналов задаются через запятую в .env: CHANNEL_ID=-1001,-1002
+        channel_ids_str = os.getenv("CHANNEL_ID", "")
+        self.channel_ids: list[int | str] = []
+        if channel_ids_str:
+            for ch_id in channel_ids_str.split(","):
+                ch_id = ch_id.strip()
+                if not ch_id:
+                    continue
+                try:
+                    self.channel_ids.append(int(ch_id))
+                except ValueError:
+                    # Если это юзернейм (@channel)
+                    if ch_id.startswith("@"):
+                        self.channel_ids.append(ch_id)
+                    else:
+                        self.channel_ids.append(f"@{ch_id}")
             
         self.epic_api_url: str = os.getenv(
             "EPIC_API_URL", 
@@ -63,7 +72,7 @@ class Settings:
         # Валидация критических настроек
         if not self.bot_token:
             logger.error("Переменная BOT_TOKEN не задана в файле .env!")
-        if not channel_id_str:
+        if not channel_ids_str:
             logger.error("Переменная CHANNEL_ID не задана в файле .env!")
 
 # Создаем глобальный объект настроек для импорта в других модулях

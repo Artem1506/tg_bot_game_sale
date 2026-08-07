@@ -18,7 +18,7 @@ async def check_and_publish_fab(bot: Bot):
     
     from src.api.fab_client import FabClient
     from src.bot.channels import ChannelsManager
-    from src.bot.publisher import escape_markdown
+    from src.bot.publisher import escape_markdown, publish_fab_assets
     
     fab_client = FabClient()
     history = HistoryManager()
@@ -48,61 +48,17 @@ async def check_and_publish_fab(bot: Bot):
             
         logger.info("Найдено новых ассетов Fab: %d. Формирование публикации...", len(new_assets))
         
-        header = (
-            f"📦 *НОВЫЕ БЕСПЛАТНЫЕ МАТЕРИАЛЫ FAB* 📦\n\n"
-            f"🔥 *Список новых бесплатных материалов на Fab\\.com:*\n\n"
-        )
+        target_chats = settings.channel_ids
         
-        body_parts = []
-        for idx, asset in enumerate(new_assets, start=1):
-            asset_title = escape_markdown(asset["title"])
-            asset_url = asset["url"].replace("(", "\\(").replace(")", "\\)")
-            author = escape_markdown(asset.get("author", "Неизвестно"))
-            
-            desc = asset.get("description", "").strip()
-            if desc:
-                desc_esc = escape_markdown(desc)
-                item_text = (
-                    f"🔥 *{idx}\\. [{asset_title}]({asset_url})*\n"
-                    f"👤 Автор: *{author}*\n"
-                    f"📖 _Описание: {desc_esc}_"
-                )
-            else:
-                item_text = (
-                    f"🔥 *{idx}\\. [{asset_title}]({asset_url})*\n"
-                    f"👤 Автор: *{author}*"
-                )
-            body_parts.append(item_text)
-            
-        body = "\n\n".join(body_parts)
-        footer = (
-            f"\n\n👉 Заберите их на странице [Fab Limited\\-Time Free](https://www.fab.com/limited-time-free) "
-            f"или в Unreal Engine Editor в разделе Fab\\!"
-        )
-        text = f"{header}{body}{footer}"
-        
-        target_chats = set()
-        if settings.channel_id:
-            target_chats.add(settings.channel_id)
-            
-        for ch_id in channels_manager.get_channels().keys():
-            try:
-                target_chats.add(int(ch_id))
-            except ValueError:
-                target_chats.add(ch_id)
-                
         published_count = 0
         for chat_id in target_chats:
             try:
-                await bot.send_message(
-                    chat_id=chat_id,
-                    text=text,
-                    parse_mode="MarkdownV2",
-                    disable_web_page_preview=True
-                )
-                published_count += 1
+                success = await publish_fab_assets(bot, chat_id, new_assets, is_new=True)
+                if success:
+                    published_count += 1
             except Exception as e:
                 logger.error("Ошибка при публикации Fab в чат %s: %s", chat_id, str(e))
+
                 
         if published_count > 0:
             for asset in new_assets:
@@ -141,19 +97,7 @@ async def check_and_publish_daily(bot: Bot):
         if new_games:
             logger.info("Найдено новых раздач: %d. Публикация...", len(new_games))
             
-            # Собираем все каналы и группы для публикации
-            from src.bot.channels import ChannelsManager
-            channels_manager = ChannelsManager()
-            
-            target_chats = set()
-            if settings.channel_id:
-                target_chats.add(settings.channel_id)
-                
-            for ch_id in channels_manager.get_channels().keys():
-                try:
-                    target_chats.add(int(ch_id))
-                except ValueError:
-                    target_chats.add(ch_id)
+            target_chats = settings.channel_ids
             
             published_count = 0
             for chat_id in target_chats:

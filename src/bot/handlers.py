@@ -4,7 +4,7 @@ from aiogram.types import Message
 from aiogram.filters import Command
 from src.config import settings
 from src.api.epic_client import EpicGamesClient
-from src.bot.publisher import publish_games, escape_markdown
+from src.bot.publisher import publish_games, publish_fab_assets, escape_markdown
 from src.api.fab_client import FabClient
 from src.bot.channels import ChannelsManager
 from aiogram.filters.chat_member_updated import ChatMemberUpdatedFilter, JOIN_TRANSITION, LEAVE_TRANSITION
@@ -29,10 +29,10 @@ async def cmd_start(message: Message):
     admin_status = "Администратор 🛠️" if is_user_admin else "Пользователь 👤"
     
     welcome_text = (
-        f"👋 Привет, *{escape_markdown(message.from_user.first_name)}*\!\n\n"
-        f"Я бот для отслеживания бесплатных игр в Epic Games Store\.\n"
-        f"Мой статус для вас: *{admin_status}*\n"
-        f"Ваш Telegram ID: `{user_id}` \\(скопируйте его для добавления в ADMIN\_IDS в `.env` при необходимости\\)\n\n"
+        fr"👋 Привет, *{escape_markdown(message.from_user.first_name)}*\!\n\n"
+        fr"Я бот для отслеживания бесплатных игр в Epic Games Store\.\n"
+        fr"Мой статус для вас: *{admin_status}*\n"
+        fr"Ваш Telegram ID: `{user_id}` \\(скопируйте его для добавления в ADMIN\_IDS в `.env` при необходимости\\)\n\n"
     )
     
     if is_user_admin:
@@ -42,6 +42,7 @@ async def cmd_start(message: Message):
             "• `/check channel` — Опубликовать раздачи во все каналы и группы\.\n"
             "• `/check_fab` — Проверить раздачи FAB и прислать превью в текущий чат\.\n"
             "• `/check_fab channel` — Опубликовать раздачи FAB во все каналы и группы\.\n"
+            "• `/dev_channels` — Список всех каналов и групп \(только для разработчика\)\.\n"
             "• `/help` — Справка по командам\."
         )
     else:
@@ -65,7 +66,8 @@ async def cmd_help(message: Message):
         "раздачи игр во все подключенные каналы и группы.\n\n"
         "• `/check_fab` — ищет информацию о раздачах напрямую на Fab.com и присылает список "
         "ассетов в текущий чат в качестве *превью*.\n\n"
-        "• `/check_fab channel` — публикует список бесплатных ассетов FAB во все подключенные каналы и группы."
+        "• `/check_fab channel` — публикует список бесплатных ассетов FAB во все подключенные каналы и группы.\n\n"
+        "• `/dev_channels` — выводит список всех ID каналов и групп, в которых состоит бот (доступно только разработчику)."
     )
     await message.answer(help_text, parse_mode="Markdown")
 
@@ -91,16 +93,9 @@ async def cmd_check(message: Message, bot: Bot):
             return
 
         if publish_to_channel:
-            target_chats = set()
-            if settings.channel_id:
-                target_chats.add(settings.channel_id)
-            for ch_id in channels_manager.get_channels().keys():
-                try:
-                    target_chats.add(int(ch_id))
-                except ValueError:
-                    target_chats.add(ch_id)
+            target_chats = settings.channel_ids
             
-            await status_msg.edit_text(f"✅ Найдено раздач: {len(games)}. Публикую в {len(target_chats)} чатов/групп...")
+            await status_msg.edit_text(fr"✅ Найдено раздач: {len(games)}. Публикую в {len(target_chats)} чатов/групп из .env...")
             
             published_count = 0
             for chat_id in target_chats:
@@ -159,77 +154,26 @@ async def cmd_check_fab(message: Message, bot: Bot):
             await status_msg.edit_text("ℹ️ В настоящее время бесплатных раздач на Fab.com не найдено.")
             return
 
-        # Формируем текст сообщения
-        header = (
-            f"📦 *БЕСПЛАТНЫЙ КОНТЕНТ FAB* 📦\n\n"
-            f"🔥 *Список бесплатных материалов на этот период:*\n\n"
-        )
-        
-        body_parts = []
-        for idx, asset in enumerate(data["assets"], start=1):
-            asset_title = escape_markdown(asset["title"])
-            asset_url = asset["url"].replace("(", "\\(").replace(")", "\\)")
-            author = escape_markdown(asset.get("author", "Неизвестно"))
-            
-            desc = asset.get("description", "").strip()
-            if desc:
-                desc_esc = escape_markdown(desc)
-                item_text = (
-                    f"🔥 *{idx}\\. [{asset_title}]({asset_url})*\n"
-                    f"👤 Автор: *{author}*\n"
-                    f"📖 _Описание: {desc_esc}_"
-                )
-            else:
-                item_text = (
-                    f"🔥 *{idx}\\. [{asset_title}]({asset_url})*\n"
-                    f"👤 Автор: *{author}*"
-                )
-            body_parts.append(item_text)
-            
-        body = "\n\n".join(body_parts)
-        
-        footer = (
-            f"\n\n👉 Заберите их на странице [Fab Limited\\-Time Free](https://www.fab.com/limited-time-free) "
-            f"или в Unreal Engine Editor в разделе Fab\\!"
-        )
-        
-        text = f"{header}{body}{footer}"
-        
         if publish_to_channel:
-            target_chats = set()
-            if settings.channel_id:
-                target_chats.add(settings.channel_id)
-            for ch_id in channels_manager.get_channels().keys():
-                try:
-                    target_chats.add(int(ch_id))
-                except ValueError:
-                    target_chats.add(ch_id)
+            target_chats = settings.channel_ids
             
-            await status_msg.edit_text(f"✅ Найдено ассетов FAB: {len(data['assets'])}. Публикую в {len(target_chats)} чатов/групп...")
+            await status_msg.edit_text(fr"✅ Найдено ассетов FAB: {len(data['assets'])}. Публикую в {len(target_chats)} чатов/групп из .env...")
             
             published_count = 0
             for chat_id in target_chats:
                 try:
-                    await bot.send_message(
-                        chat_id=chat_id,
-                        text=text,
-                        parse_mode="MarkdownV2",
-                        disable_web_page_preview=True
-                    )
-                    published_count += 1
+                    success = await publish_fab_assets(bot, chat_id, data["assets"], is_new=False)
+                    if success:
+                        published_count += 1
                 except Exception as e:
                     logger.error("Ошибка при ручной публикации FAB в чат %s: %s", chat_id, str(e))
                     
             status_text = f"Успешно отправлено в {published_count} из {len(target_chats)} чатов/групп"
         else:
             await status_msg.edit_text(f"✅ Найдено ассетов FAB: {len(data['assets'])}. Начинаю отправку превью...")
-            await bot.send_message(
-                chat_id=message.chat.id,
-                text=text,
-                parse_mode="MarkdownV2",
-                disable_web_page_preview=True
-            )
-            status_text = "Успешно отправлено"
+            success = await publish_fab_assets(bot, message.chat.id, data["assets"], is_new=False)
+            status_text = "Успешно отправлено" if success else "Ошибка при отправке"
+
             
         # Информируем админа
         await message.answer(
@@ -273,14 +217,13 @@ async def cmd_dev_channels(message: Message, bot: Bot):
     if message.from_user.id != 1205125640:
         return  # Игнорируем запросы от других пользователей
 
-    # Пытаемся опросить дефолтный канал из настроек, если его нет в списке
-    default_channel_id = settings.channel_id
-    if default_channel_id:
+    # Пытаемся опросить каналы из настроек, чтобы убедиться что они актуальны в архиве
+    for ch_id in settings.channel_ids:
         try:
-            chat = await bot.get_chat(default_channel_id)
+            chat = await bot.get_chat(ch_id)
             channels_manager.add_channel(chat.id, chat.title or "Без названия", chat.type)
         except Exception as e:
-            logger.warning("Не удалось опросить дефолтный канал %s: %s", default_channel_id, str(e))
+            logger.warning("Не удалось опросить канал %s из .env: %s", ch_id, str(e))
 
     channels = channels_manager.get_channels()
     
