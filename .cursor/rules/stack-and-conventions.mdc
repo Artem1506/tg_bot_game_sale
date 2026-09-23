@@ -1,0 +1,30 @@
+---
+description: Стек и паттерны — aiogram 3, aiohttp, curl/Fab, Settings singleton
+globs: "src/**/*.py"
+alwaysApply: false
+---
+
+# Стек и соглашения
+
+- Python 3.10+, `aiogram` 3.x, `aiohttp`, `python-dotenv`, `apscheduler`.
+- История публикаций — `history.json`. Чаты — `channels.json`.
+- HTTP-сессия и конфиг — Singleton (`settings` из `src.config`).
+- Клиенты API изолированы от Telegram (`EpicGamesClient`, `FabClient`).
+- Тексты постов собирает `publisher.py` (factory-стиль), не дублировать в handlers/scheduler.
+
+## Epic Games
+
+- Endpoint: `settings.epic_api_url` (`freeGamesPromotions`).
+- Параметры: `locale=ru`, `country=US` (глобальные раздачи + русские описания).
+- Бесплатно: `discountPercentage == 0` и акция активна сейчас.
+
+## Fab.com
+
+- Страница: `https://www.fab.com/limited-time-free`.
+- Транспорт: `asyncio.create_subprocess_exec("curl", ...)`, не `aiohttp` (Cloudflare 403).
+- HTML парсить regex; описания — параллельно через `asyncio.gather` из `<meta name="description">`.
+
+## Telegram
+
+- Несколько игр — Media Group, подпись только у первого `InputMediaPhoto`.
+- MarkdownV2: экранировать через `escape_markdown`. В обычной Python-строке слэш писать как `\\.` (иначе f-string сломает escape).

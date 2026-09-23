@@ -1,0 +1,46 @@
+---
+description: PEP 8, секреты, логи, структура и Git-конвенции проекта
+globs: "**/*.py"
+alwaysApply: false
+---
+
+# Стандарты Python
+
+## Стиль
+
+- PEP 8. Длина строки до **100** символов.
+- Публичные функции и классы — docstring на русском (Google/Sphinx).
+- Зависимости только через `requirements.txt`.
+
+## Секреты
+
+- Токены и ключи **не хардкодить**.
+- Читать из `.env` через `python-dotenv` и `src.config.settings`.
+- `.env` в `.gitignore`.
+
+```python
+# ❌ BAD
+bot = Bot(token="123456:ABC...")
+
+# ✅ GOOD
+from src.config import settings
+bot = Bot(token=settings.bot_token)
+```
+
+## Ошибки и логи
+
+- Логировать в `logs/app.log` (ротация) и `bot_activity.log`.
+- К API Epic — retry с экспоненциальной задержкой (уже в `EpicGamesClient`).
+- Бот не должен падать из-за сети: ловить исключения и продолжать.
+
+## Структура
+
+- `src/api` — Epic и Fab клиенты.
+- `src/bot` — Telegram: handlers, publisher, scheduler, history, channels.
+- Тексты и отправка постов — только через `publisher.py`.
+- Новые зависимости — в `requirements.txt`.
+
+## Git
+
+- Атомарные коммиты: `feat: ...`, `fix: ...`.
+- Ветки: `develop` (разработка), `main` (прод).

@@ -1,0 +1,30 @@
+---
+description: Контекст Epic Free Games Bot — канал, задачи, команды, режимы запуска
+alwaysApply: true
+---
+
+# Epic Free Games Bot
+
+Telegram-бот [@gamefreebie_bot](https://t.me/gamefreebie_bot) для канала [@grampsgamer](https://t.me/grampsgamer).
+Публикует еженедельные раздачи Epic Games Store и бесплатные ассеты Fab.com.
+
+## Задачи
+
+- EGS: игры через API `freeGamesPromotions` (`locale=ru`, `country=US`).
+- FAB: ассеты с `https://www.fab.com/limited-time-free` через системный `curl` (обход Cloudflare). **Не Reddit.**
+- Посты в MarkdownV2. Несколько игр — один альбом (`InputMediaPhoto`), подпись у первого фото.
+- Дубликаты режет `history.json`. Список рассылки — `CHANNEL_ID` в `.env`. `channels.json` только архив чатов.
+
+## Команды (ЛС)
+
+- `/start` — приветствие и Telegram ID.
+- `/check`, `/check_fab` — превью в текущий чат.
+- `/check channel`, `/check_fab channel` — публикация во все чаты из `CHANNEL_ID`.
+- `/help` — справка админа.
+- `/dev_channels` (`/dev_chats`) — только разработчик `1205125640`.
+- Админ-команды только для `ADMIN_IDS`.
+
+## Запуск
+
+- Демон: `py src/main.py` (polling + APScheduler по `CHECK_TIME`).
+- Разовый: `run_once.bat` → `src/run_once.py` (проверка и выход).
