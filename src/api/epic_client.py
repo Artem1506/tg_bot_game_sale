@@ -1,10 +1,15 @@
 import logging
 import asyncio
+import re
 from datetime import datetime, timezone
 import aiohttp
 from src.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Внутренний hex-идентификатор оффера, который Epic иногда отдаёт в urlSlug.
+# Такой slug не является адресом страницы и даёт 404.
+HEX_ID_RE = re.compile(r"[0-9a-f]{32}")
 
 class EpicGamesClient:
     """Клиент для работы с публичным API Epic Games Store."""
@@ -160,27 +165,14 @@ class EpicGamesClient:
                     image_url = images[0].get("url", "")
                     
                 # Формируем ссылку на EGS
-                # Порядок поиска слага для ссылки: productSlug -> urlSlug -> mappings[0].pageSlug
-                slug = el.get("productSlug") or el.get("urlSlug")
-                if not slug:
-                    # Проверяем mappings
-                    mappings = el.get("catalogNs", {}).get("mappings", [])
-                    if mappings and isinstance(mappings, list):
-                        slug = mappings[0].get("pageSlug")
-                
-                # Если слаг все еще пустой, но есть slug в customAttributes
-                if not slug:
-                    for attr in el.get("customAttributes", []):
-                        if attr.get("key") == "productSlug":
-                            slug = attr.get("value")
-                            break
-                            
-                # Если совсем ничего нет, используем заглушку
+                slug = self._resolve_page_slug(el)
                 if slug:
-                    # Убираем лишние слэши, если они есть
-                    slug = slug.strip("/")
                     game_url = f"https://store.epicgames.com/ru/p/{slug}"
                 else:
+                    logger.warning(
+                        "Не удалось определить slug страницы для '%s', используется ссылка на /free-games",
+                        title,
+                    )
                     game_url = "https://store.epicgames.com/ru/free-games"
 
                 # Даты начала и конца раздачи для отображения
@@ -203,3 +195,51 @@ class EpicGamesClient:
                 continue
                 
         return parsed_games
+
+    @staticmethod
+    def _resolve_page_slug(el: dict) -> str | None:
+        """Определяет slug страницы игры в магазине EGS.
+
+        Источники перебираются от самого надёжного к наименее надёжному:
+        1. ``offerMappings[].pageSlug`` — страница конкретного оффера
+           (для ADD_ON ведёт на само дополнение, а не на базовую игру).
+        2. ``catalogNs.mappings[].pageSlug`` — страница продукта.
+        3. ``productSlug`` (legacy), в т.ч. из ``customAttributes``
+           с ключом ``com.epicgames.app.productSlug``; хвост ``/home`` отрезается.
+        4. ``urlSlug`` — внутренний идентификатор оффера; используется только если
+           он не похож на 32-символьный hex-id, иначе гарантированно даст 404.
+
+        Returns:
+            str | None: slug для подстановки в ``/p/{slug}`` либо None.
+        """
+        # 1. offerMappings
+        for mapping in el.get("offerMappings") or []:
+            if isinstance(mapping, dict) and mapping.get("pageSlug"):
+                return mapping["pageSlug"].strip("/")
+
+        # 2. catalogNs.mappings
+        catalog_ns = el.get("catalogNs") or {}
+        for mapping in catalog_ns.get("mappings") or []:
+            if isinstance(mapping, dict) and mapping.get("pageSlug"):
+                return mapping["pageSlug"].strip("/")
+
+        # 3. productSlug (поле или customAttributes)
+        product_slug = el.get("productSlug")
+        if not product_slug:
+            for attr in el.get("customAttributes") or []:
+                if isinstance(attr, dict) and attr.get("key") == "com.epicgames.app.productSlug":
+                    product_slug = attr.get("value")
+                    break
+        if product_slug:
+            product_slug = product_slug.strip("/")
+            if product_slug.endswith("/home"):
+                product_slug = product_slug[: -len("/home")]
+            if product_slug:
+                return product_slug
+
+        # 4. urlSlug, если это не hex-идентификатор
+        url_slug = (el.get("urlSlug") or "").strip("/")
+        if url_slug and not HEX_ID_RE.fullmatch(url_slug):
+            return url_slug
+
+        return None
